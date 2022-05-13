@@ -75,20 +75,6 @@ local function is_lone_child(node)
   return parent:named_child_count() == 1
 end
 
-local function set_node_level(node)
-  node_level = 0
-
-  if node == nil then
-    return
-  end
-
-  local parent = node:parent()
-  while parent ~= nil and same_start(node, parent) do
-    node_level = node_level + 1
-    parent = parent:parent()
-  end
-end
-
 local function goto_node(node)
   if node == nil then
     return
@@ -158,6 +144,20 @@ local function get_child_node(node)
       return child
     end
     child = child:named_child(0)
+  end
+end
+
+local function set_node_level(node)
+  node_level = 0
+
+  if node == nil then
+    return
+  end
+
+  local parent = get_parent_node(node)
+  while parent ~= nil and same_start(node, parent) do
+    node_level = node_level + 1
+    parent = get_parent_node(parent)
   end
 end
 

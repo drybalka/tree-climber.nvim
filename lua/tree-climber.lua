@@ -7,14 +7,31 @@ local function same_start(node1, node2)
   return start_row1 == start_row2 and start_col1 == start_col2
 end
 
-local function contains(parent, child)
-  local start_row1, start_col1, end_row1, end_col1 = parent:range()
-  local start_row2, start_col2, end_row2, end_col2 = child:range()
+local function contains(outer, inner)
+  local start_row1, start_col1, end_row1, end_col1 = outer:range()
+  local start_row2, start_col2, end_row2, end_col2 = inner:range()
 
   local start_fits = start_row1 < start_row2 or (start_row1 == start_row2 and start_col1 <= start_col2)
   local end_fits = end_row1 > end_row2 or (end_row1 == end_row2 and end_col1 >= end_col2)
 
   return start_fits and end_fits
+end
+
+local function set_node_level(path)
+  node_level = 0
+
+  local last_node = path[#path]
+  for i = #path - 1, 1, -1 do
+    local node = path[i]
+    if same_start(node, last_node) then
+      node_level = node_level + 1
+    end
+  end
+end
+
+local function goto_node(node)
+  local start_row, start_col = node:start()
+  vim.api.nvim_win_set_cursor(0, { start_row + 1, start_col })
 end
 
 local function get_cursor()
@@ -33,180 +50,186 @@ local function get_root(parser, cursor)
   end
 end
 
-local function locate_node(root, cursor, level)
-  local nontrivial_parent = root
-  while nontrivial_parent:named_child_count() == 1 do
-    nontrivial_parent = nontrivial_parent:named_child(0)
+local function get_connector(node, parser)
+  for _, subparser in pairs(parser:children()) do
+    for _, tree in ipairs(subparser:trees()) do
+      local subroot = tree:root()
+      if subroot and contains(node, subroot) then
+        return subroot, subparser
+      end
+    end
+  end
+end
+
+local function find_next_nontrivial_parent(node, parser)
+  while node:named_child_count() <= 1 do
+    if node:named_child_count() == 1 then
+      node = node:named_child(0)
+    else
+      local subroot, subparser = get_connector(node, parser)
+      if not subroot or not subparser then
+        return
+      end
+      node = subroot
+      parser = subparser
+    end
+  end
+  return node, parser
+end
+
+local function locate_node(path, parser, cursor, level)
+  local next_parent, next_parser = find_next_nontrivial_parent(path[#path], parser)
+  if not next_parent or not next_parser then
+    return path, parser
   end
 
-  for node, _ in nontrivial_parent:iter_children() do
+  for node, _ in next_parent:iter_children() do
     if node:named() and contains(node, cursor) then
+      table.insert(path, node)
+
       if same_start(node, cursor) then
         if level == 0 then
-          return node
+          return path, parser
         else
-          return locate_node(node, cursor, level - 1)
+          return locate_node(path, parser, cursor, level - 1)
         end
       end
 
-      return locate_node(node, cursor, level)
+      return locate_node(path, parser, cursor, level)
     end
   end
 
-  return root
+  return path, parser
 end
 
-function get_node()
-  local parsers = require "nvim-treesitter.parsers"
-  local main_parser = parsers.get_parser()
+function get_node_path()
   local cursor = get_cursor()
-
-  local root = get_root(main_parser, cursor)
-  local node = locate_node(root, cursor, node_level)
-
-  return node
-end
-
-local function is_lone_child(node)
-  local parent = node:parent()
-  if parent == nil then
-    return true
-  end
-  return parent:named_child_count() == 1
-end
-
-local function goto_node(node)
-  if node == nil then
+  local main_parser = require("nvim-treesitter.parsers").get_parser()
+  if not main_parser then
     return
   end
 
-  local start_row, start_col = node:start()
-  vim.api.nvim_win_set_cursor(0, { start_row + 1, start_col })
+  local root = get_root(main_parser, cursor)
+  if not root then
+    return
+  end
+
+  return locate_node({root}, main_parser, cursor, node_level)
 end
 
 
-local function get_next_node(node)
+local function get_next_sibling_path(path)
+  local node = path[#path]
   local parent = node:parent()
-  if parent == nil then
+  if not parent then
     return
   end
   local iterator = parent:iter_children()
 
-  for sibling_before, _ in iterator do
-    if sibling_before == node then
+  for prev_sibling, _ in iterator do
+    if prev_sibling == node then
       break
     end
   end
 
-  for sibling_after, _ in iterator do
-    if sibling_after:named() then
-      return sibling_after
+  for next_sibling, _ in iterator do
+    if next_sibling:named() then
+      path[#path] = next_sibling
+      return path
     end
   end
 end
 
-local function get_prev_node(node)
+function get_prev_sibling_path(path)
+  local node = path[#path]
   local parent = node:parent()
-  if parent == nil then
+  if not parent then
     return
   end
-  local prev
+  local prev_sibling
 
   for sibling, _ in parent:iter_children() do
-    if sibling:named() then
-      if sibling == node then
-        return prev
-      end
-      prev = sibling
+    if sibling == node and prev_sibling then
+      path[#path] = prev_sibling
+      return path
+    elseif sibling:named() then
+      prev_sibling = sibling
     end
   end
 end
 
-local function get_parent_node(node)
-  local parent = node:parent()
-  if parent == nil then
+local function get_parent_path(path)
+  path[#path] = nil
+  return path
+end
+
+function get_child_path(path, parser)
+  local next_parent, next_parser = find_next_nontrivial_parent(path[#path], parser)
+  if not next_parent or not next_parser then
     return
   end
 
-  while parent ~= nil do
-    if parent:named() and not is_lone_child(parent) then
-      return parent
-    end
-    parent = parent:parent()
-  end
-end
-
-function get_child_node(node)
-  local child = node:named_child(0)
-
-  while child ~= nil do
-    if not is_lone_child(child) then
-      return child
-    end
-    child = child:named_child(0)
-  end
-end
-
-local function set_node_level(node)
-  node_level = 0
-  print('aaa')
-
-  if node == nil then
-    return
-  end
-
-  local parent = get_parent_node(node)
-  while parent ~= nil and same_start(node, parent) do
-    node_level = node_level + 1
-    parent = get_parent_node(parent)
-  end
+  path[#path + 1] = next_parent:named_child(0)
+  return path
 end
 
 
 function goto_next()
-  local node = get_node()
-  local next = get_next_node(node)
-
-  if next == nil then
+  local path = get_node_path()
+  if not path then
     return
   end
 
-  set_node_level(next)
-  goto_node(next)
+  local next_path = get_next_sibling_path(path)
+  if not next_path then
+    return
+  end
+
+  set_node_level(next_path)
+  goto_node(next_path[#next_path])
 end
 
 function goto_prev()
-  local node = get_node()
-  local prev = get_prev_node(node)
-
-  if prev == nil then
+  local path = get_node_path()
+  if not path then
     return
   end
 
-  set_node_level(prev)
-  goto_node(prev)
+  local prev_path = get_prev_sibling_path(path)
+  if not prev_path then
+    return
+  end
+
+  set_node_level(prev_path)
+  goto_node(prev_path[#prev_path])
 end
 
 function goto_parent()
-  local node = get_node()
-  local parent = get_parent_node(node)
-
-  if parent == nil then
+  local path = get_node_path()
+  if not path then
     return
   end
 
-  set_node_level(parent)
-  goto_node(parent)
+  local parent_path = get_parent_path(path)
+  if not parent_path then
+    return
+  end
+
+  set_node_level(parent_path)
+  goto_node(parent_path[#parent_path])
 end
 
 function goto_child()
-  local node = get_node()
-  local child = get_child_node(node)
-
-  if child == nil then
+  local path, parser = get_node_path()
+  if not path or not parser then
     return
   end
 
-  set_node_level(child)
-  goto_node(child)
+  local child_path = get_child_path(path, parser)
+  if not child_path then
+    return
+  end
+
+  set_node_level(child_path)
+  goto_node(child_path[#child_path])
 end

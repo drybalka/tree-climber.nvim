@@ -1,84 +1,211 @@
-local ts_utils = require("nvim-treesitter.ts_utils")
-local function is_root(node)
-  return node:parent() == nil
+local node_level = 0
+
+local function same_start(node1, node2)
+  local start_row1, start_col1 = node1:start()
+  local start_row2, start_col2 = node2:start()
+
+  return start_row1 == start_row2 and start_col1 == start_col2
 end
-function get_node()
-  local function same_pos(pos1, pos2)
-    return pos1[1] == pos2[1] and pos1[2] == pos2[2]
-  end
 
-  local node = ts_utils.get_node_at_cursor()
-  if is_root(node) then
-    return node
-  end
+local function contains(parent, child)
+  local start_row1, start_col1, end_row1, end_col1 = parent:range()
+  local start_row2, start_col2, end_row2, end_col2 = child:range()
 
+  local start_fits = start_row1 < start_row2 or (start_row1 == start_row2 and start_col1 <= start_col2)
+  local end_fits = end_row1 > end_row2 or (end_row1 == end_row2 and end_col1 >= end_col2)
+
+  return start_fits and end_fits
+end
+
+local function get_cursor()
   local cursor = vim.api.nvim_win_get_cursor(0)
-  if same_pos({cursor[1] - 1, cursor[2]}, {node:start()}) then
-    while same_pos({node:start()}, {node:parent():start()}) do
-      local parent = node:parent()
-      if is_root(parent) then
-        return node
-      end
-      node = parent
+  cursor.start = function(cursor) return cursor[1] - 1, cursor[2] end
+  cursor.range = function(cursor) return cursor[1] - 1, cursor[2], cursor[1] - 1, cursor[2] + 1 end
+  return cursor
+end
+
+local function get_root(parser, cursor)
+  for _, tree in ipairs(parser:trees()) do
+    local root = tree:root()
+    if root and contains(root, cursor) then
+      return root
     end
   end
+end
+
+local function locate_node(root, cursor, level)
+  local nontrivial_parent = root
+  while nontrivial_parent:named_child_count() == 1 do
+    nontrivial_parent = nontrivial_parent:named_child(0)
+  end
+
+  for node, _ in nontrivial_parent:iter_children() do
+    if node:named() and contains(node, cursor) then
+      if same_start(node, cursor) then
+        if level == 0 then
+          return node
+        else
+          return locate_node(node, cursor, level - 1)
+        end
+      end
+
+      return locate_node(node, cursor, level)
+    end
+  end
+
+  return root
+end
+
+local function get_node()
+  local parsers = require "nvim-treesitter.parsers"
+  local main_parser = parsers.get_parser()
+  local cursor = get_cursor()
+
+  local root = get_root(main_parser, cursor)
+  local node = locate_node(root, cursor, node_level)
 
   return node
 end
 
-function goto_parent()
-  local node = get_node()
+local function is_lone_child(node)
   local parent = node:parent()
-  if not is_root(parent) then
-    ts_utils.goto_node(parent)
+  if parent == nil then
+    return true
   end
-end
-function goto_next()
-  local node = get_node()
-  local next = ts_utils.get_next_node(node)
-  ts_utils.goto_node(next)
-end
-function goto_prev()
-  local node = get_node()
-  local prev = ts_utils.get_previous_node(node)
-  ts_utils.goto_node(prev)
+  return parent:named_child_count() == 1
 end
 
-function get_root_lang_tree()
-  local parsers = require "nvim-treesitter.parsers"
-    if not parsers.has_parser() then
-      return
-    end
+local function set_node_level(node)
+  node_level = 0
 
-  return parsers.get_parser()
-end
-function get_root_at_cursor()
-  local parsers = require "nvim-treesitter.parsers"
-  if not parsers.has_parser() then
+  if node == nil then
     return
   end
 
-  local root_lang_tree = parsers.get_parser()
+  local parent = node:parent()
+  while parent ~= nil and same_start(node, parent) do
+    node_level = node_level + 1
+    parent = parent:parent()
+  end
+end
 
-  local lang_tree = root_lang_tree:language_for_range { line, col, line, col }
+local function goto_node(node)
+  if node == nil then
+    return
+  end
 
-  for _, tree in ipairs(lang_tree:trees()) do
-    local root = tree:root()
+  local start_row, start_col = node:start()
+  vim.api.nvim_win_set_cursor(0, { start_row + 1, start_col })
+end
 
-    if root and ts_utils.is_in_node_range(root, line, col) then
-      return root, tree, lang_tree
+
+local function get_next_node(node)
+  local parent = node:parent()
+  if parent == nil then
+    return
+  end
+  local iterator = parent:iter_children()
+
+  for sibling_before, _ in iterator do
+    if sibling_before == node then
+      break
     end
   end
 
-  -- This isn't a likely scenario, since the position must belong to a tree somewhere.
-  return nil, nil, lang_tree
+  for sibling_after, _ in iterator do
+    if sibling_after:named() then
+      return sibling_after
+    end
+  end
 end
+
+local function get_prev_node(node)
+  local parent = node:parent()
+  if parent == nil then
+    return
+  end
+  local prev
+
+  for sibling, _ in parent:iter_children() do
+    if sibling:named() then
+      if sibling == node then
+        return prev
+      end
+      prev = sibling
+    end
+  end
+end
+
+local function get_parent_node(node)
+  local parent = node:parent()
+  if parent == nil then
+    return
+  end
+
+  while parent ~= nil do
+    if parent:named() and not is_lone_child(parent) then
+      return parent
+    end
+    parent = parent:parent()
+  end
+end
+
+local function get_child_node(node)
+  local child = node:named_child(0)
+
+  while child ~= nil do
+    if not is_lone_child(child) then
+      return child
+    end
+    child = child:named_child(0)
+  end
+end
+
+
+function goto_next()
+  local node = get_node()
+  local next = get_next_node(node)
+
+  if next == nil then
+    return
+  end
+
+  set_node_level(next)
+  goto_node(next)
+end
+
+function goto_prev()
+  local node = get_node()
+  local prev = get_prev_node(node)
+
+  if prev == nil then
+    return
+  end
+
+  set_node_level(prev)
+  goto_node(prev)
+end
+
+function goto_parent()
+  local node = get_node()
+  local parent = get_parent_node(node)
+
+  if parent == nil then
+    return
+  end
+
+  set_node_level(parent)
+  goto_node(parent)
+end
+
 function goto_child()
-  local cursor = vim.api.nvim_win_get_cursor(winnr or 0)
-  local cursor_range = { cursor[1] - 1, cursor[2] }
-  local root = get_root_for_position(unpack(cursor_range))
-  -- print(root)
-  -- local node = ts_utils.get_node_at_cursor()
-  -- local child = ts_utils.get_named_children(node)
-  -- ts_utils.goto_node(child)
+  local node = get_node()
+  local child = get_child_node(node)
+
+  if child == nil then
+    return
+  end
+
+  set_node_level(child)
+  goto_node(child)
 end

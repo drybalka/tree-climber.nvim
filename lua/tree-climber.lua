@@ -56,7 +56,7 @@ local function locate_node(root, cursor, level)
   return root
 end
 
-local function get_node()
+function get_node()
   local parsers = require "nvim-treesitter.parsers"
   local main_parser = parsers.get_parser()
   local cursor = get_cursor()
@@ -136,7 +136,7 @@ local function get_parent_node(node)
   end
 end
 
-local function get_child_node(node)
+function get_child_node(node)
   local child = node:named_child(0)
 
   while child ~= nil do
@@ -149,6 +149,7 @@ end
 
 local function set_node_level(node)
   node_level = 0
+  print('aaa')
 
   if node == nil then
     return

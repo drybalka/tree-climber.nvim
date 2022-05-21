@@ -1,4 +1,7 @@
-local node_level = 0
+local M = {}
+
+M._node_level = 0
+
 
 local function same_start(node1, node2)
   local start_row1, start_col1 = node1:start()
@@ -18,18 +21,18 @@ local function contains(outer, inner)
 end
 
 local function set_node_level(path)
-  node_level = 0
+  M._node_level = 0
 
   local last_node = path[#path]
   for i = #path - 1, 1, -1 do
     local node = path[i]
     if same_start(node, last_node) then
-      node_level = node_level + 1
+      M._node_level = M._node_level + 1
     end
   end
 end
 
-local function goto_node(node)
+local function move_cursor_to_node(node)
   local start_row, start_col = node:start()
   vim.api.nvim_win_set_cursor(0, { start_row + 1, start_col })
 end
@@ -77,6 +80,7 @@ local function find_next_nontrivial_parent(node, parser)
   return node, parser
 end
 
+
 local function locate_node(path, parser, cursor, level)
   local next_parent, next_parser = find_next_nontrivial_parent(path[#path], parser)
   if not next_parent or not next_parser then
@@ -102,7 +106,7 @@ local function locate_node(path, parser, cursor, level)
   return path, parser
 end
 
-function get_node_path()
+function get_current_node_path()
   local cursor = get_cursor()
   local main_parser = require("nvim-treesitter.parsers").get_parser()
   if not main_parser then
@@ -114,7 +118,7 @@ function get_node_path()
     return
   end
 
-  return locate_node({root}, main_parser, cursor, node_level)
+  return locate_node({root}, main_parser, cursor, M._node_level)
 end
 
 
@@ -173,63 +177,36 @@ function get_child_path(path, parser)
   return path
 end
 
-
-function goto_next()
-  local path = get_node_path()
-  if not path then
-    return
-  end
-
-  local next_path = get_next_sibling_path(path)
-  if not next_path then
-    return
-  end
-
-  set_node_level(next_path)
-  goto_node(next_path[#next_path])
-end
-
-function goto_prev()
-  local path = get_node_path()
-  if not path then
-    return
-  end
-
-  local prev_path = get_prev_sibling_path(path)
-  if not prev_path then
-    return
-  end
-
-  set_node_level(prev_path)
-  goto_node(prev_path[#prev_path])
-end
-
-function goto_parent()
-  local path = get_node_path()
-  if not path then
-    return
-  end
-
-  local parent_path = get_parent_path(path)
-  if not parent_path then
-    return
-  end
-
-  set_node_level(parent_path)
-  goto_node(parent_path[#parent_path])
-end
-
-function goto_child()
-  local path, parser = get_node_path()
+local function goto_with(new_path_getter)
+  local path, parser = get_current_node_path()
   if not path or not parser then
     return
   end
 
-  local child_path = get_child_path(path, parser)
-  if not child_path then
+  local new_path = new_path_getter(path, parser)
+  if not new_path then
     return
   end
 
-  set_node_level(child_path)
-  goto_node(child_path[#child_path])
+  set_node_level(new_path)
+  move_cursor_to_node(new_path[#new_path])
 end
+
+
+M.goto_next = function()
+  goto_with(get_next_sibling_path)
+end
+
+M.goto_prev = function()
+  goto_with(get_prev_sibling_path)
+end
+
+M.goto_parent = function()
+  goto_with(get_parent_path)
+end
+
+M.goto_child = function()
+  goto_with(get_child_path)
+end
+
+return M

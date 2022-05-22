@@ -192,6 +192,23 @@ local function goto_with(new_path_getter)
   move_cursor_to_node(new_path[#new_path])
 end
 
+local function swap_with(new_path_getter)
+  local path, parser = get_current_node_path()
+  if not path or not parser then
+    return
+  end
+  local node = path[#path]
+
+  local new_path = new_path_getter(path, parser)
+  if not new_path then
+    return
+  end
+  local new_node = new_path[#new_path]
+
+  set_node_level(new_path)
+  require('nvim-treesitter.ts_utils').swap_nodes(node, new_node, 0, true)
+end
+
 
 M.goto_next = function()
   goto_with(get_next_sibling_path)
@@ -207,6 +224,14 @@ end
 
 M.goto_child = function()
   goto_with(get_child_path)
+end
+
+M.swap_next = function()
+  swap_with(get_next_sibling_path)
+end
+
+M.swap_prev = function()
+  swap_with(get_prev_sibling_path)
 end
 
 return M

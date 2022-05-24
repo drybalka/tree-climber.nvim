@@ -82,7 +82,11 @@ end
 
 
 local function locate_node(path, parser, cursor, level)
-  local next_parent, next_parser = find_next_nontrivial_parent(path[#path], parser)
+  local node = path[#path] or get_root(parser, cursor)
+  if not node then
+    return
+  end
+  local next_parent, next_parser = find_next_nontrivial_parent(node, parser)
   if not next_parent or not next_parser then
     return path, parser
   end
@@ -118,7 +122,7 @@ function get_current_node_path()
     return
   end
 
-  return locate_node({root}, main_parser, cursor, M._node_level)
+  return locate_node({}, main_parser, cursor, M._node_level)
 end
 
 
@@ -182,6 +186,7 @@ local function goto_with(new_path_getter)
   if not path or not parser then
     return
   end
+  _G.p = path
 
   local new_path = new_path_getter(path, parser)
   if not new_path then

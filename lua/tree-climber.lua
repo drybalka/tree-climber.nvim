@@ -186,7 +186,6 @@ local function goto_with(new_path_getter)
   if not path or not parser then
     return
   end
-  _G.p = path
 
   local new_path = new_path_getter(path, parser)
   if not new_path then

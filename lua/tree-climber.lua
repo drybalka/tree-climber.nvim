@@ -167,7 +167,9 @@ function get_prev_sibling_path(path)
 end
 
 local function get_parent_path(path)
-  path[#path] = nil
+  if (#path > 1) then
+    path[#path] = nil
+  end
   return path
 end
 

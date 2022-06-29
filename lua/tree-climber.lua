@@ -39,8 +39,8 @@ end
 
 local function get_cursor()
   local cursor = vim.api.nvim_win_get_cursor(0)
-  cursor.start = function(cursor) return cursor[1] - 1, cursor[2] end
-  cursor.range = function(cursor) return cursor[1] - 1, cursor[2], cursor[1] - 1, cursor[2] + 1 end
+  cursor.start = function() return cursor[1] - 1, cursor[2] end
+  cursor.range = function() return cursor[1] - 1, cursor[2], cursor[1] - 1, cursor[2] + 1 end
   return cursor
 end
 
@@ -82,11 +82,11 @@ end
 
 
 local function locate_node(path, parser, cursor, level)
-  local node = path[#path] or get_root(parser, cursor)
-  if not node then
+  local current_node = path[#path] or get_root(parser, cursor)
+  if not current_node then
     return
   end
-  local next_parent, next_parser = find_next_nontrivial_parent(node, parser)
+  local next_parent, next_parser = find_next_nontrivial_parent(current_node, parser)
   if not next_parent or not next_parser then
     return path, parser
   end
@@ -110,7 +110,7 @@ local function locate_node(path, parser, cursor, level)
   return path, parser
 end
 
-function get_current_node_path()
+local function get_current_node_path()
   local cursor = get_cursor()
   local main_parser = require("nvim-treesitter.parsers").get_parser()
   if not main_parser then
@@ -135,7 +135,7 @@ local function get_next_sibling_path(path)
   end
 end
 
-function get_prev_sibling_path(path)
+local function get_prev_sibling_path(path)
   local node = path[#path]
   local prev_sibling = node:prev_named_sibling()
 
@@ -152,7 +152,7 @@ local function get_parent_path(path)
   return path
 end
 
-function get_child_path(path, parser)
+local function get_child_path(path, parser)
   local next_parent, next_parser = find_next_nontrivial_parent(path[#path], parser)
   if not next_parent or not next_parser then
     return

@@ -24,7 +24,7 @@ local function set_node_level(path)
   M._node_level = 0
 
   local last_node = path[#path]
-  for i = #path - 1, 1, -1 do
+  for i = #path - 1, 2, -1 do
     local node = path[i]
     if same_start(node, last_node) then
       M._node_level = M._node_level + 1
@@ -122,47 +122,26 @@ function get_current_node_path()
     return
   end
 
-  return locate_node({}, main_parser, cursor, M._node_level)
+  return locate_node({root}, main_parser, cursor, M._node_level)
 end
 
 
 local function get_next_sibling_path(path)
   local node = path[#path]
-  local parent = node:parent()
-  if not parent then
-    return
-  end
-  local iterator = parent:iter_children()
-
-  for prev_sibling, _ in iterator do
-    if prev_sibling == node then
-      break
-    end
-  end
-
-  for next_sibling, _ in iterator do
-    if next_sibling:named() then
+  local next_sibling = node:next_named_sibling()
+  if next_sibling then
       path[#path] = next_sibling
       return path
-    end
   end
 end
 
 function get_prev_sibling_path(path)
   local node = path[#path]
-  local parent = node:parent()
-  if not parent then
-    return
-  end
-  local prev_sibling
+  local prev_sibling = node:prev_named_sibling()
 
-  for sibling, _ in parent:iter_children() do
-    if sibling == node and prev_sibling then
-      path[#path] = prev_sibling
-      return path
-    elseif sibling:named() then
-      prev_sibling = sibling
-    end
+  if prev_sibling then
+    path[#path] = prev_sibling
+    return path
   end
 end
 

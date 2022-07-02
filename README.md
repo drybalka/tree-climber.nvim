@@ -31,6 +31,7 @@ vim.keymap.set('n', '<c-j>', require('tree-climber').swap_next, keyopts)
 
 ### Configuration
 
-Each motion and swap function optionally accepts a table with a configuration, for example, `goto_next({ skip_comments = true})`.
+Each motion and swap function optionally accepts a table with a configuration, for example, `goto_next({ skip_comments = true })`.
+
 The only available option so far is:
-* `skip_comments` (boolean) - ignore comment nodes as if they were not there at all (default: false) - 
+* `skip_comments` (boolean) - ignore comment nodes as if they were not there at all (default: false)

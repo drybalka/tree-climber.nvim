@@ -20,6 +20,11 @@ local function contains(outer, inner)
   return start_fits and end_fits
 end
 
+local function is_comment(node)
+  local type = node:type()
+  return type == "comment" or type == "line_comment" or type == "block_comment"
+end
+
 local function set_node_level(path)
   M._node_level = 0
 
@@ -64,53 +69,62 @@ local function get_connector(node, parser)
   end
 end
 
-local function find_next_nontrivial_parent(node, parser)
-  while node:named_child_count() <= 1 do
-    if node:named_child_count() == 1 then
-      node = node:named_child(0)
-    else
-      local subroot, subparser = get_connector(node, parser)
-      if not subroot or not subparser then
-        return
-      end
-      node = subroot
-      parser = subparser
+local function valid_children(node, options)
+  local children = {}
+  for child, _ in node:iter_children() do
+    if child:named() and not (options and options.skip_comments and is_comment(child)) then
+      table.insert(children, child)
     end
   end
+  return children
+end
+
+local function find_next_nontrivial_parent(node, parser, options)
+  local children = valid_children(node, options)
+
+  if #children == 0 then
+    local subroot, subparser = get_connector(node, parser)
+    if not subroot or not subparser then
+      return
+    end
+    return find_next_nontrivial_parent(subroot, subparser, options)
+  end
+
+  if #children == 1 then
+    return find_next_nontrivial_parent(children[1], parser, options)
+  end
+
   return node, parser
 end
 
 
-local function locate_node(path, parser, cursor, level)
-  local current_node = path[#path] or get_root(parser, cursor)
-  if not current_node then
-    return
-  end
-  local next_parent, next_parser = find_next_nontrivial_parent(current_node, parser)
+local function locate_node(path, parser, cursor, level, options)
+  local next_parent, next_parser = find_next_nontrivial_parent(path[#path], parser, options)
   if not next_parent or not next_parser then
     return path, parser
   end
 
   for node, _ in next_parent:iter_children() do
-    if node:named() and contains(node, cursor) then
+    if node:named() and contains(node, cursor) and
+        not (options and options.skip_comments and is_comment(node)) then
       table.insert(path, node)
 
       if same_start(node, cursor) then
         if level == 0 then
           return path, parser
         else
-          return locate_node(path, parser, cursor, level - 1)
+          return locate_node(path, parser, cursor, level - 1, options)
         end
       end
 
-      return locate_node(path, parser, cursor, level)
+      return locate_node(path, parser, cursor, level, options)
     end
   end
 
   return path, parser
 end
 
-local function get_current_node_path()
+local function get_current_node_path(options)
   local cursor = get_cursor()
   local main_parser = require("nvim-treesitter.parsers").get_parser()
   if not main_parser then
@@ -122,22 +136,35 @@ local function get_current_node_path()
     return
   end
 
-  return locate_node({root}, main_parser, cursor, M._node_level)
+  return locate_node({root}, main_parser, cursor, M._node_level, options)
 end
 
 
-local function get_next_sibling_path(path)
+local function get_next_sibling_path(path, parser, options)
   local node = path[#path]
   local next_sibling = node:next_named_sibling()
+
+  if options and options.skip_comments then
+    while next_sibling and is_comment(next_sibling) do
+      next_sibling = next_sibling:next_named_sibling()
+    end
+  end
+
   if next_sibling then
       path[#path] = next_sibling
       return path
   end
 end
 
-local function get_prev_sibling_path(path)
+local function get_prev_sibling_path(path, parser, options)
   local node = path[#path]
   local prev_sibling = node:prev_named_sibling()
+
+  if options and options.skip_comments then
+    while prev_sibling and is_comment(prev_sibling) do
+      prev_sibling = prev_sibling:prev_named_sibling()
+    end
+  end
 
   if prev_sibling then
     path[#path] = prev_sibling
@@ -145,30 +172,30 @@ local function get_prev_sibling_path(path)
   end
 end
 
-local function get_parent_path(path)
+local function get_parent_path(path, parser, options)
   if (#path > 1) then
     path[#path] = nil
   end
   return path
 end
 
-local function get_child_path(path, parser)
-  local next_parent, next_parser = find_next_nontrivial_parent(path[#path], parser)
+local function get_child_path(path, parser, options)
+  local next_parent, next_parser = find_next_nontrivial_parent(path[#path], parser, options)
   if not next_parent or not next_parser then
     return
   end
 
-  path[#path + 1] = next_parent:named_child(0)
+  path[#path + 1] = valid_children(next_parent, options)[1]
   return path
 end
 
-local function goto_with(new_path_getter)
-  local path, parser = get_current_node_path()
+local function goto_with(new_path_getter, options)
+  local path, parser = get_current_node_path(options)
   if not path or not parser then
     return
   end
 
-  local new_path = new_path_getter(path, parser)
+  local new_path = new_path_getter(path, parser, options)
   if not new_path then
     return
   end
@@ -177,14 +204,14 @@ local function goto_with(new_path_getter)
   move_cursor_to_node(new_path[#new_path])
 end
 
-local function swap_with(new_path_getter)
-  local path, parser = get_current_node_path()
+local function swap_with(new_path_getter, options)
+  local path, parser = get_current_node_path(options)
   if not path or not parser then
     return
   end
   local node = path[#path]
 
-  local new_path = new_path_getter(path, parser)
+  local new_path = new_path_getter(path, parser, options)
   if not new_path then
     return
   end
@@ -195,28 +222,28 @@ local function swap_with(new_path_getter)
 end
 
 
-M.goto_next = function()
-  goto_with(get_next_sibling_path)
+M.goto_next = function(options)
+  goto_with(get_next_sibling_path, options)
 end
 
-M.goto_prev = function()
-  goto_with(get_prev_sibling_path)
+M.goto_prev = function(options)
+  goto_with(get_prev_sibling_path, options)
 end
 
-M.goto_parent = function()
-  goto_with(get_parent_path)
+M.goto_parent = function(options)
+  goto_with(get_parent_path, options)
 end
 
-M.goto_child = function()
-  goto_with(get_child_path)
+M.goto_child = function(options)
+  goto_with(get_child_path, options)
 end
 
-M.swap_next = function()
-  swap_with(get_next_sibling_path)
+M.swap_next = function(options)
+  swap_with(get_next_sibling_path, options)
 end
 
-M.swap_prev = function()
-  swap_with(get_prev_sibling_path)
+M.swap_prev = function(options)
+  swap_with(get_prev_sibling_path, options)
 end
 
 return M

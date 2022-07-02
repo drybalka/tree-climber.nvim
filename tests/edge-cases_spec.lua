@@ -8,7 +8,7 @@ end
 
 describe("tree-climber", function()
   it('does not count root in node_level', function()
-    vim.cmd[[edit tests/samples/root_node_level.html]]
+    vim.cmd[[view tests/samples/root_node_level.html]]
     tc._node_level = 0
 
     set_cursor_to({4, 0})

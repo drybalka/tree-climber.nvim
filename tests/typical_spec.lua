@@ -6,9 +6,9 @@ local function set_cursor_to(pos)
   vim.api.nvim_win_set_cursor(0, pos)
 end
 
-vim.cmd[[edit tests/samples/typical.html]]
+vim.cmd[[view tests/samples/typical.html]]
 
-describe("typical-tree-climber", function()
+describe("tree-climber", function()
   before_each(function()
     set_cursor_to({1, 0})
     tc._node_level = 0
@@ -149,9 +149,9 @@ describe("typical-tree-climber", function()
   end)
 
   it('does not go out of bounds on last sibling on bottom level', function()
-    set_cursor_to({12, 12})
+    set_cursor_to({13, 12})
     tc.goto_next()
-    assert_cursor_at({12, 12})
+    assert_cursor_at({13, 12})
   end)
 
   it('does not go out of bounds on first sibling', function()

@@ -49,6 +49,21 @@ local function get_cursor()
   return cursor
 end
 
+local function get_node_selection_range(node)
+  local start_row, start_col, end_row, end_col = node:range()
+  if end_col == 0 then
+    -- Use the value of the last col of the previous row instead.
+    end_col = #vim.api.nvim_buf_get_lines(0, end_row - 1, end_row, false)[1]
+    end_row = end_row - 1
+  end
+
+  start_row = start_row + 1
+  end_row = end_row + 1
+  end_col = end_col - 1
+
+  return start_row, start_col, end_row, end_col
+end
+
 local function get_root(parser, cursor)
   for _, tree in ipairs(parser:trees()) do
     local root = tree:root()
@@ -244,6 +259,26 @@ end
 
 M.swap_prev = function(options)
   swap_with(get_prev_sibling_path, options)
+end
+
+M.select_node = function(options)
+  local path, parser = get_current_node_path(options)
+  if not path or not parser then
+    return
+  end
+  local node = path[#path]
+
+  local start_row, start_col, end_row, end_col = get_node_selection_range(node)
+  vim.api.nvim_win_set_cursor(0, { start_row, start_col })
+
+  local mode = vim.api.nvim_get_mode().mode
+  if (mode == 'v' or mode == 'V' or mode == '') then
+    vim.cmd("normal! o")
+  else
+    vim.cmd("normal! v")
+  end
+
+  vim.api.nvim_win_set_cursor(0, { end_row, end_col })
 end
 
 return M

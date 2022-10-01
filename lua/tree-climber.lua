@@ -112,7 +112,6 @@ local function find_next_nontrivial_parent(node, parser, options)
   return node, parser
 end
 
-
 local function locate_node(path, parser, cursor, level, options)
   local next_parent, next_parser = find_next_nontrivial_parent(path[#path], parser, options)
   if not next_parent or not next_parser then
@@ -153,7 +152,6 @@ local function get_current_node_path(options)
 
   return locate_node({root}, main_parser, cursor, M._node_level, options)
 end
-
 
 local function get_next_sibling_path(path, parser, options)
   local node = path[#path]
@@ -216,7 +214,12 @@ local function goto_with(new_path_getter, options)
   end
 
   set_node_level(new_path)
-  move_cursor_to_node(new_path[#new_path])
+
+  local new_node = new_path[#new_path]
+  move_cursor_to_node(new_node)
+  if options and options.highlight then
+    require("tree-climber.highlight").highlight_node(new_node, options)
+  end
 end
 
 local function swap_with(new_path_getter, options)
@@ -233,9 +236,8 @@ local function swap_with(new_path_getter, options)
   local new_node = new_path[#new_path]
 
   set_node_level(new_path)
-  require('nvim-treesitter.ts_utils').swap_nodes(node, new_node, 0, true)
+  require("nvim-treesitter.ts_utils").swap_nodes(node, new_node, 0, true)
 end
-
 
 M.goto_next = function(options)
   goto_with(get_next_sibling_path, options)
@@ -279,6 +281,15 @@ M.select_node = function(options)
   end
 
   vim.api.nvim_win_set_cursor(0, { end_row, end_col })
+end
+
+M.highlight_node = function(options)
+  local path, parser = get_current_node_path(options)
+  if not path or not parser then
+    return
+  end
+  local node = path[#path]
+  require("tree-climber.highlight").highlight_node(node, options)
 end
 
 return M

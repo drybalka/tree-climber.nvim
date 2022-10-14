@@ -3,15 +3,15 @@
 
 local M = {}
 
-local ts_utils = require("nvim-treesitter.ts_utils")
+local ts_utils = require 'nvim-treesitter.ts_utils'
 
-local node_ns = vim.api.nvim_create_namespace("tree_climber_hlnode")
+local node_ns = vim.api.nvim_create_namespace 'tree_climber_hlnode'
 local node_timer
 
 function M.highlight_node(node, opts)
   vim.validate {
-    node = { node, "userdata", true },
-    opts = { opts, "table", true },
+    node = { node, 'userdata', true },
+    opts = { opts, 'table', true },
   }
   if node == nil then
     return
@@ -19,7 +19,7 @@ function M.highlight_node(node, opts)
 
   opts = opts or {}
   local on_macro = opts.on_macro or false
-  local higroup = opts.higroup or "IncSearch"
+  local higroup = opts.higroup or 'IncSearch'
   local timeout = opts.timeout or 150
 
   if not on_macro and vim.fn.reg_executing() ~= '' then

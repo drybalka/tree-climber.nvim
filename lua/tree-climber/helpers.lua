@@ -7,7 +7,7 @@ function M.print_tree(root)
       level = 0
     end
     local shift = string.rep(tab, level)
-    local res = shift .. node:type() .. ' : ' .. vim.inspect{node:range()} .. '\n'
+    local res = shift .. node:type() .. ' : ' .. vim.inspect { node:range() } .. '\n'
     local count = 0
     while node:named_child(count) do
       local next = node:named_child(count)

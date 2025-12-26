@@ -13,6 +13,7 @@ It is actually quite surprising that this functionality is not provided by the t
 The memorable alternatives are:
  * [nvim-treesitter-textobjects](https://github.com/nvim-treesitter/nvim-treesitter-textobjects) allows jumping in some filetypes to predefined node types, but each type requires its own keymap, whereas 'tree-climber.nvim' allows jumping over abstract treesitter trees.
  * [syntax-tree-surfer](https://github.com/ziontee113/syntax-tree-surfer) has a very similar functionality, but unfortunately does not support jumping over comments and across multi-language files.
+ * [treewalker.nvim](https://github.com/aaronik/treewalker.nvim) has similar functionality, but allows for larger movement around code in a more line-wise way, skips comments, includes single node swapping and line-wise node swapping that takes comments and decorators with it
 
 ### Installation
 
